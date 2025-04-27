@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faCheck, 
@@ -9,57 +9,71 @@ import {
   faCalendarAlt,
   faClock,
   faNotesMedical,
-  faFileUpload
+  faFileUpload,
+  faFlask,
+  faVideo
 } from '@fortawesome/free-solid-svg-icons';
+import LabResultsPopup from '../components/LabResultsPopup';
+import { supabase } from '../lib/supabase';
 
 const Appointments = () => {
-  const [appointments, setAppointments] = useState([
-    {
-      id: 1,
-      patient: {
-        fullName: 'Ahmet Yılmaz',
-        phoneNumber: '5551234567',
-        email: 'ahmet.yilmaz@example.com',
-      },
-      date: '15 Mart 2024',
-      time: '14:30',
-      status: 'Beklemede',
-      complaint: 'Diyabet kontrolü için geliyorum. Son tahlil sonuçlarımı da getireceğim.',
-      medicalFile: 'tahlil_sonuclari.pdf'
-    },
-    {
-      id: 2,
-      patient: {
-        fullName: 'Ayşe Demir',
-        phoneNumber: '5552345678',
-        email: 'ayse.demir@example.com',
-      },
-      date: '15 Mart 2024',
-      time: '15:00',
-      status: 'Beklemede',
-      complaint: 'Tiroid şikayetim var. Son zamanlarda çok yorgun hissediyorum.',
-      medicalFile: 'tiroid_tahlilleri.pdf'
-    },
-    {
-      id: 3,
-      patient: {
-        fullName: 'Mehmet Kaya',
-        phoneNumber: '5553456789',
-        email: 'mehmet.kaya@example.com',
-      },
-      date: '16 Mart 2024',
-      time: '10:00',
-      status: 'Onaylandı',
-      complaint: 'Diyabet ilaçlarımı yenilemek için geliyorum.',
-      medicalFile: 'son_tahliller.pdf'
-    }
-  ]);
+  const [appointments, setAppointments] = useState([]);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [isLabResultsOpen, setIsLabResultsOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const handleStatusChange = (id, newStatus) => {
-    setAppointments(appointments.map(appointment => 
-      appointment.id === id ? { ...appointment, status: newStatus } : appointment
-    ));
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  const fetchAppointments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .order('date', { ascending: true });
+
+      if (error) throw error;
+      setAppointments(data || []);
+    } catch (error) {
+      console.error('Error fetching appointments:', error.message);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handleStatusChange = async (id, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .update({ status: newStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      setAppointments(appointments.map(appointment => 
+        appointment.id === id ? { ...appointment, status: newStatus } : appointment
+      ));
+    } catch (error) {
+      console.error('Error updating appointment status:', error.message);
+    }
+  };
+
+  const handleViewLabResults = (appointment) => {
+    setSelectedAppointment(appointment);
+    setIsLabResultsOpen(true);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-primary-dark">Yükleniyor...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -67,9 +81,6 @@ const Appointments = () => {
         <div className="bg-white rounded-2xl shadow-lg p-6">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold text-primary-dark">Randevular</h1>
-            <button className="bg-primary text-white px-6 py-2 rounded-full font-semibold hover:bg-primary-light transition-colors shadow-lg hover:shadow-xl">
-              Yeni Randevu
-            </button>
           </div>
 
           <div className="space-y-4">
@@ -143,6 +154,26 @@ const Appointments = () => {
                         {appointment.medicalFile}
                       </a>
                     </div>
+                    {appointment.videoUrl && (
+                      <div className="flex items-center space-x-2 text-sm text-gray-500">
+                        <FontAwesomeIcon icon={faVideo} className="w-4 h-4" />
+                        <a 
+                          href={appointment.videoUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:text-primary-light"
+                        >
+                          Video Görüşme Kaydı
+                        </a>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleViewLabResults(appointment)}
+                      className="flex items-center space-x-2 text-primary hover:text-primary-light mt-2"
+                    >
+                      <FontAwesomeIcon icon={faFlask} className="w-4 h-4" />
+                      <span>Tahlil Sonuçlarını Gör</span>
+                    </button>
                   </div>
                   <div>
                     <div className="flex items-center space-x-2 text-sm text-gray-500 mb-1">
@@ -159,6 +190,12 @@ const Appointments = () => {
           </div>
         </div>
       </div>
+
+      <LabResultsPopup
+        open={isLabResultsOpen}
+        onClose={() => setIsLabResultsOpen(false)}
+        labResults={selectedAppointment?.labResults}
+      />
     </div>
   );
 };
