@@ -10,7 +10,7 @@ import Header from './components/layout/Header';
 import Dashboard from './pages/Dashboard';
 import Appointments from './pages/Appointments';
 import Videos from './pages/Videos';
-import Blog from './pages/Blog';
+import Blogs from './pages/Blogs';
 
 function App() {
   return (
@@ -24,7 +24,7 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/appointments" element={<Appointments />} />
               <Route path="/videos" element={<Videos />} />
-              <Route path="/blog" element={<Blog />} />
+              <Route path="/blog" element={<Blogs />} />
             </Routes>
           </main>
         </div>
