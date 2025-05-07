@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faCalendarCheck, 
@@ -11,16 +11,17 @@ import {
   faCalendarMinus,
   faTrash
 } from '@fortawesome/free-solid-svg-icons';
+import { supabase } from '../lib/supabase';
 
 const Dashboard = () => {
   const [isUnavailableModalOpen, setIsUnavailableModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState('');
-  const [unavailableSlots, setUnavailableSlots] = useState([
-    { id: 1, date: '15 Mart 2024', time: '12:00', reason: 'Öğle Arası' },
-    { id: 2, date: '15 Mart 2024', time: '13:00', reason: 'Öğle Arası' },
-    { id: 3, date: '16 Mart 2024', time: '17:00', reason: 'Toplantı' }
-  ]);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [unavailableSlots, setUnavailableSlots] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [appointments, setAppointments] = useState([]);
+  const [loadingAppointments, setLoadingAppointments] = useState(false);
 
   const statistics = [
     { 
@@ -43,48 +44,96 @@ const Dashboard = () => {
     }
   ];
 
-  const recentAppointments = [
-    { 
-      id: 1, 
-      name: 'Ahmet Yılmaz', 
-      time: '14:30', 
-      status: 'Onaylandı',
-      statusColor: 'bg-green-100 text-green-600'
-    },
-    { 
-      id: 2, 
-      name: 'Ayşe Demir', 
-      time: '15:00', 
-      status: 'Beklemede',
-      statusColor: 'bg-yellow-100 text-yellow-600'
-    },
-    { 
-      id: 3, 
-      name: 'Mehmet Kaya', 
-      time: '16:30', 
-      status: 'İptal Edildi',
-      statusColor: 'bg-red-100 text-red-600'
-    }
+  const hours = [
+    "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"
   ];
 
-  const handleAddUnavailableSlot = () => {
-    if (selectedDate && selectedTime) {
-      const newSlot = {
-        id: unavailableSlots.length + 1,
-        date: selectedDate,
-        time: selectedTime,
-        reason: 'Müsait Değil'
-      };
-      setUnavailableSlots([...unavailableSlots, newSlot]);
-      setSelectedDate('');
-      setSelectedTime('');
-      setIsUnavailableModalOpen(false);
+  // Unavailable saatleri Supabase'den çek
+  const fetchUnavailableSlots = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('unavailable_times')
+      .select('*')
+      .order('date', { ascending: true })
+      .order('start_time', { ascending: true });
+    if (!error) setUnavailableSlots(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchUnavailableSlots();
+  }, []);
+
+  const handleAddUnavailableSlot = async () => {
+    if (selectedDate && startTime && endTime) {
+      const today = new Date().toISOString().split('T')[0];
+      if (selectedDate < today) {
+        alert('Geçmiş bir tarihe müsait olmayan saat ekleyemezsiniz.');
+        return;
+      }
+      setLoading(true);
+      const { error } = await supabase.from('unavailable_times').insert([
+        {
+          date: selectedDate,
+          start_time: startTime,
+          end_time: endTime,
+        },
+      ]);
+      setLoading(false);
+      if (!error) {
+        setSelectedDate('');
+        setStartTime('');
+        setEndTime('');
+        setIsUnavailableModalOpen(false);
+        fetchUnavailableSlots();
+      } else {
+        alert('Kayıt başarısız: ' + error.message);
+      }
     }
   };
 
-  const handleDeleteSlot = (id) => {
-    setUnavailableSlots(unavailableSlots.filter(slot => slot.id !== id));
+  const handleDeleteSlot = async (id) => {
+    setLoading(true);
+    await supabase.from('unavailable_times').delete().eq('id', id);
+    setLoading(false);
+    fetchUnavailableSlots();
   };
+
+  // Randevuları getir
+  const fetchAppointments = async () => {
+    setLoadingAppointments(true);
+    console.log('Randevular getiriliyor...');
+    
+    const { data, error } = await supabase
+      .from('appointments')
+      .select(`
+        *,
+        patients (
+          first_name,
+          last_name,
+          phone
+        ),
+        doctors (
+          first_name,
+          last_name
+        )
+      `)
+      .order('date', { ascending: true });
+    
+    if (error) {
+      console.error('Randevular getirilirken hata oluştu:', error);
+    } else {
+      console.log('Gelen randevu verileri:', data);
+      console.log('Toplam randevu sayısı:', data.length);
+    }
+    
+    setAppointments(data || []);
+    setLoadingAppointments(false);
+  };
+
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -122,30 +171,33 @@ const Dashboard = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {unavailableSlots.map((slot) => (
-                <div key={slot.id} className="bg-white rounded-lg p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                        <FontAwesomeIcon icon={faTimes} className="w-5 h-5 text-red-600" />
+            {unavailableSlots.length === 0 ? (
+              <div className="text-gray-500">Kayıtlı müsait olunmayan saat yok.</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {unavailableSlots.map((slot) => (
+                  <div key={slot.id} className="bg-white rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                          <FontAwesomeIcon icon={faTimes} className="w-5 h-5 text-red-600" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-semibold text-primary-dark">{slot.date}</h3>
+                          <p className="text-sm text-gray-500">{slot.start_time} - {slot.end_time}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-sm font-semibold text-primary-dark">{slot.date}</h3>
-                        <p className="text-sm text-gray-500">{slot.time}</p>
-                        <p className="text-xs text-gray-400 mt-1">{slot.reason}</p>
-                      </div>
+                      <button 
+                        onClick={() => handleDeleteSlot(slot.id)}
+                        className="p-2 text-red-500 hover:text-red-600 transition-colors"
+                      >
+                        <FontAwesomeIcon icon={faTrash} className="w-4 h-4" />
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => handleDeleteSlot(slot.id)}
-                      className="p-2 text-red-500 hover:text-red-600 transition-colors"
-                    >
-                      <FontAwesomeIcon icon={faTrash} className="w-4 h-4" />
-                    </button>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="bg-background-light rounded-xl p-6">
@@ -158,39 +210,57 @@ const Dashboard = () => {
             </div>
 
             <div className="space-y-4">
-              {recentAppointments.map((appointment) => (
-                <div key={appointment.id} className="bg-white rounded-lg p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-10 h-10 bg-primary-light rounded-full flex items-center justify-center">
-                        <FontAwesomeIcon icon={faUser} className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-semibold text-primary-dark">{appointment.name}</h3>
-                        <div className="flex items-center space-x-2 text-sm text-gray-500 mt-1">
-                          <FontAwesomeIcon icon={faClock} className="w-4 h-4" />
-                          <span>{appointment.time}</span>
+              {loadingAppointments ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                </div>
+              ) : appointments.length === 0 ? (
+                <p className="text-gray-500 text-center py-4">Henüz randevu bulunmuyor.</p>
+              ) : (
+                appointments.slice(0, 3).map((appointment) => (
+                  <div key={appointment.id} className="bg-white rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 bg-primary-light rounded-full flex items-center justify-center">
+                          <FontAwesomeIcon icon={faUser} className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-semibold text-primary-dark">
+                            {appointment.patients?.first_name} {appointment.patients?.last_name}
+                          </h3>
+                          <div className="flex items-center space-x-2 text-sm text-gray-500 mt-1">
+                            <FontAwesomeIcon icon={faClock} className="w-4 h-4" />
+                            <span>{appointment.time}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {appointment.status === 'Beklemede' && (
-                        <>
-                          <button className="p-2 bg-green-100 text-green-600 rounded-full hover:bg-green-200 transition-colors">
-                            <FontAwesomeIcon icon={faCheck} className="w-4 h-4" />
-                          </button>
-                          <button className="p-2 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors">
-                            <FontAwesomeIcon icon={faTimes} className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                      <span className={`px-3 py-1 rounded-full text-sm ${appointment.statusColor}`}>
-                        {appointment.status}
-                      </span>
+                      <div className="flex items-center space-x-2">
+                        {appointment.status === 'pending' && (
+                          <>
+                            <button className="p-2 bg-green-100 text-green-600 rounded-full hover:bg-green-200 transition-colors">
+                              <FontAwesomeIcon icon={faCheck} className="w-4 h-4" />
+                            </button>
+                            <button className="p-2 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors">
+                              <FontAwesomeIcon icon={faTimes} className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        <span className={`px-3 py-1 rounded-full text-sm ${
+                          appointment.status === 'confirmed' ? 'bg-green-100 text-green-600' :
+                          appointment.status === 'pending' ? 'bg-yellow-100 text-yellow-600' :
+                          appointment.status === 'cancelled' ? 'bg-red-100 text-red-600' :
+                          'bg-blue-100 text-blue-600'
+                        }`}>
+                          {appointment.status === 'confirmed' ? 'Onaylandı' :
+                           appointment.status === 'pending' ? 'Beklemede' :
+                           appointment.status === 'cancelled' ? 'İptal Edildi' :
+                           'Tamamlandı'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -207,18 +277,38 @@ const Dashboard = () => {
                 <input
                   type="date"
                   value={selectedDate}
+                  min={new Date().toISOString().split('T')[0]}
                   onChange={(e) => setSelectedDate(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Saat</label>
-                <input
-                  type="time"
-                  value={selectedTime}
-                  onChange={(e) => setSelectedTime(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
-                />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç Saati</label>
+                  <select
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                  >
+                    <option value="">Başlangıç Saati</option>
+                    {hours.map((h) => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bitiş Saati</label>
+                  <select
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                  >
+                    <option value="">Bitiş Saati</option>
+                    {hours.map((h) => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="flex justify-end space-x-4 mt-6">
                 <button
@@ -230,8 +320,9 @@ const Dashboard = () => {
                 <button
                   onClick={handleAddUnavailableSlot}
                   className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-light transition-colors"
+                  disabled={loading}
                 >
-                  Ekle
+                  {loading ? 'Ekleniyor...' : 'Ekle'}
                 </button>
               </div>
             </div>

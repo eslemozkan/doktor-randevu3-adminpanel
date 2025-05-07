@@ -44,18 +44,53 @@ const Appointments = () => {
 
   const handleStatusChange = async (id, newStatus) => {
     try {
-      const { error } = await supabase
+      // Randevuyu güncelle
+      const { data: appointment, error } = await supabase
         .from('appointments')
         .update({ status: newStatus })
-        .eq('id', id);
+        .eq('id', id)
+        .select()
+        .single();
 
       if (error) throw error;
-      
+
+      // Mail gönderme işlemi
+      console.log('appointment:', appointment);
+      const email = appointment.email || appointment.patients?.email || appointment.user?.email || null;
+      console.log('Mail gönderilecek veri:', {
+        email,
+        status: newStatus,
+        full_name: appointment.full_name,
+        date: appointment.date,
+        time: appointment.time
+      });
+      const mailResponse = await fetch('http://localhost:3000/api/send-appointment-mail', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          status: newStatus,
+          full_name: appointment.full_name,
+          date: appointment.date,
+          time: appointment.time
+        }),
+      });
+
+      if (!mailResponse.ok) {
+        const err = await mailResponse.json();
+        console.error('Mail gönderilirken hata oluştu:', err.error);
+      }
+
       setAppointments(appointments.map(appointment => 
         appointment.id === id ? { ...appointment, status: newStatus } : appointment
       ));
+
+      alert(`Randevu ${newStatus === 'confirmed' ? 'onaylandı' : 'reddedildi'} ve hasta bilgilendirildi.`);
     } catch (error) {
       console.error('Error updating appointment status:', error.message);
+      alert('Randevu durumu güncellenirken bir hata oluştu: ' + error.message);
     }
   };
 
@@ -83,6 +118,7 @@ const Appointments = () => {
             <h1 className="text-2xl font-bold text-primary-dark">Randevular</h1>
           </div>
 
+          {/* Randevu Listesi */}
           <div className="space-y-4">
             {appointments.map((appointment) => (
               <div key={appointment.id} className="bg-background-light rounded-xl p-4 hover:shadow-md transition-shadow">
@@ -92,44 +128,50 @@ const Appointments = () => {
                       <FontAwesomeIcon icon={faUser} className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-primary-dark">{appointment.patient.fullName}</h3>
+                      <h3 className="text-lg font-semibold text-primary-dark">
+                        {appointment.full_name}
+                      </h3>
                       <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
                         <span className="flex items-center">
                           <FontAwesomeIcon icon={faPhone} className="w-4 h-4 mr-2" />
-                          {appointment.patient.phoneNumber}
+                          {appointment.phone_number}
                         </span>
-                        <span className="flex items-center">
-                          <FontAwesomeIcon icon={faEnvelope} className="w-4 h-4 mr-2" />
-                          {appointment.patient.email}
-                        </span>
+                        {appointment.email && (
+                          <span className="flex items-center">
+                            <FontAwesomeIcon icon={faEnvelope} className="w-4 h-4 mr-2" />
+                            {appointment.email}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    {appointment.status === 'Beklemede' && (
+                    {['pending', 'Beklemede'].includes(appointment.status) && (
                       <>
                         <button
-                          onClick={() => handleStatusChange(appointment.id, 'Onaylandı')}
+                          onClick={() => handleStatusChange(appointment.id, 'confirmed')}
                           className="p-2 bg-green-100 text-green-600 rounded-full hover:bg-green-200 transition-colors"
                           title="Randevuyu Onayla"
                         >
                           <FontAwesomeIcon icon={faCheck} className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleStatusChange(appointment.id, 'İptal Edildi')}
+                          onClick={() => handleStatusChange(appointment.id, 'cancelled')}
                           className="p-2 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
-                          title="Randevuyu İptal Et"
+                          title="Randevuyu Reddet"
                         >
                           <FontAwesomeIcon icon={faTimes} className="w-4 h-4" />
                         </button>
                       </>
                     )}
                     <span className={`px-3 py-1 rounded-full text-sm ${
-                      appointment.status === 'Onaylandı' ? 'bg-green-100 text-green-600' :
-                      appointment.status === 'İptal Edildi' ? 'bg-red-100 text-red-600' :
+                      ['confirmed', 'Onaylandı'].includes(appointment.status) ? 'bg-green-100 text-green-600' :
+                      ['cancelled', 'İptal Edildi'].includes(appointment.status) ? 'bg-red-100 text-red-600' :
                       'bg-yellow-100 text-yellow-600'
                     }`}>
-                      {appointment.status}
+                      {['confirmed', 'Onaylandı'].includes(appointment.status) ? 'Onaylandı' :
+                       ['cancelled', 'İptal Edildi'].includes(appointment.status) ? 'İptal Edildi' :
+                       'Beklemede'}
                     </span>
                   </div>
                 </div>
@@ -146,12 +188,14 @@ const Appointments = () => {
                     </div>
                     <div className="flex items-center space-x-2 text-sm text-gray-500">
                       <FontAwesomeIcon icon={faFileUpload} className="w-4 h-4" />
-                      <span>Yüklenen Dosya: </span>
+                      <span>Tahlil Sonucu: </span>
                       <a 
-                        href={`#${appointment.medicalFile}`} 
-                        className="text-primary hover:text-primary-light"
+                        href={appointment.medical_file_url} 
+                        className="text-primary hover:text-primary-light underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
                       >
-                        {appointment.medicalFile}
+                        Görüntüle
                       </a>
                     </div>
                     {appointment.videoUrl && (
@@ -172,7 +216,7 @@ const Appointments = () => {
                       className="flex items-center space-x-2 text-primary hover:text-primary-light mt-2"
                     >
                       <FontAwesomeIcon icon={faFlask} className="w-4 h-4" />
-                      <span>Tahlil Sonuçlarını Gör</span>
+                      <span>Tahlil Özetini Gör</span>
                     </button>
                   </div>
                   <div>
