@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase';
 
 const Appointments = () => {
   const [appointments, setAppointments] = useState([]);
+  const [removedIds, setRemovedIds] = useState([]);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isLabResultsOpen, setIsLabResultsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,7 @@ const Appointments = () => {
       const { data, error } = await supabase
         .from('appointments')
         .select('*')
-        .order('date', { ascending: true });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       setAppointments(data || []);
@@ -99,6 +100,43 @@ const Appointments = () => {
     setIsLabResultsOpen(true);
   };
 
+  const isPast = (date, time) => {
+    if (!date || !time) return false;
+    const now = new Date();
+    const dt = new Date(`${date}T${time}`);
+    return dt < now;
+  };
+
+  const visibleAppointments = appointments.filter(
+    (a) =>
+      !removedIds.includes(a.id) &&
+      a.status !== 'cancelled' &&
+      !isPast(a.date, a.time)
+  );
+
+  useEffect(() => {
+    const toRemove = appointments.filter(
+      (a) => a.status === 'cancelled' || isPast(a.date, a.time)
+    ).map(a => a.id);
+    if (toRemove.length > 0) {
+      toRemove.forEach((id, i) => {
+        setTimeout(() => setRemovedIds(r => [...r, id]), i * 100);
+      });
+    }
+  }, [appointments]);
+
+  // En yeni randevular en başta olacak şekilde sıralama (önce created_at, yoksa date+time)
+  const sortedAppointments = [...visibleAppointments].sort((a, b) => {
+    if (a.created_at && b.created_at) {
+      return new Date(b.created_at) - new Date(a.created_at);
+    }
+    const fixTime = t => t && t.length === 5 ? t + ':00' : (t || '00:00:00');
+    const dateA = new Date(`${a.date}T${fixTime(a.time)}`);
+    const dateB = new Date(`${b.date}T${fixTime(b.time)}`);
+    return dateB - dateA;
+  });
+  console.log('sortedAppointments:', sortedAppointments.slice(0, 5));
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-6 flex items-center justify-center">
@@ -120,8 +158,11 @@ const Appointments = () => {
 
           {/* Randevu Listesi */}
           <div className="space-y-4">
-            {appointments.map((appointment) => (
-              <div key={appointment.id} className="bg-background-light rounded-xl p-4 hover:shadow-md transition-shadow">
+            {sortedAppointments.map((appointment) => (
+              <div
+                key={appointment.id}
+                className={`bg-background-light rounded-xl p-4 hover:shadow-md transition-shadow duration-500 ease-in-out ${removedIds.includes(appointment.id) ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+              >
                 <div className="flex justify-between items-start">
                   <div className="flex items-center space-x-4">
                     <div className="w-10 h-10 bg-primary-light rounded-full flex items-center justify-center">

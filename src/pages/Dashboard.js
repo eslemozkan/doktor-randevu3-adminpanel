@@ -12,6 +12,7 @@ import {
   faTrash
 } from '@fortawesome/free-solid-svg-icons';
 import { supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
   const [isUnavailableModalOpen, setIsUnavailableModalOpen] = useState(false);
@@ -22,23 +23,55 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(false);
   const [appointments, setAppointments] = useState([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
+  const [stats, setStats] = useState({
+    todaysAppointments: 0,
+    uniquePatients: 0,
+    monthlyAppointments: 0,
+  });
+
+  const navigate = useNavigate();
+
+  // İstatistikleri dinamik hesapla
+  const today = new Date().toISOString().split('T')[0];
+  const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+
+  const todaysAppointments = appointments.filter(a => a.date === today).length;
+  const uniquePatients = new Set(appointments.map(a => a.full_name)).size;
+  const monthlyAppointments = appointments.filter(a => (a.date || '').slice(0, 7) === currentMonth).length;
+
+  useEffect(() => {
+    if (appointments.length > 0) {
+      const today = new Date().toISOString().split('T')[0];
+      const currentMonth = new Date().toISOString().slice(0, 7);
+
+      const todaysAppointments = appointments.filter(a => a.date === today).length;
+      const uniquePatients = new Set(appointments.map(a => a.full_name)).size;
+      const monthlyAppointments = appointments.filter(a => (a.date || '').slice(0, 7) === currentMonth).length;
+
+      setStats({
+        todaysAppointments,
+        uniquePatients,
+        monthlyAppointments,
+      });
+    }
+  }, [appointments]);
 
   const statistics = [
     { 
       title: 'Bugünkü Randevular', 
-      value: '5', 
+      value: stats.todaysAppointments, 
       icon: faCalendarCheck,
       color: 'bg-blue-100 text-blue-600'
     },
     { 
       title: 'Toplam Hasta', 
-      value: '120', 
+      value: stats.uniquePatients, 
       icon: faUser,
       color: 'bg-green-100 text-green-600'
     },
     { 
       title: 'Aylık Randevu', 
-      value: '45', 
+      value: stats.monthlyAppointments, 
       icon: faChartLine,
       color: 'bg-purple-100 text-purple-600'
     }
@@ -51,17 +84,35 @@ const Dashboard = () => {
   // Unavailable saatleri Supabase'den çek
   const fetchUnavailableSlots = async () => {
     setLoading(true);
+    const today = new Date().toISOString().split('T')[0];
     const { data, error } = await supabase
       .from('unavailable_times')
       .select('*')
       .order('date', { ascending: true })
       .order('start_time', { ascending: true });
-    if (!error) setUnavailableSlots(data);
+
+    if (!error) {
+      const filteredSlots = data.filter(slot => slot.date >= today);
+      setUnavailableSlots(filteredSlots);
+    }
     setLoading(false);
+  };
+
+  const deletePastUnavailableSlots = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const { error } = await supabase
+      .from('unavailable_times')
+      .delete()
+      .lt('date', today);
+
+    if (error) {
+      console.error('Geçmiş müsait olmayan saatler silinirken hata oluştu:', error);
+    }
   };
 
   useEffect(() => {
     fetchUnavailableSlots();
+    deletePastUnavailableSlots();
   }, []);
 
   const handleAddUnavailableSlot = async () => {
@@ -102,31 +153,18 @@ const Dashboard = () => {
   // Randevuları getir
   const fetchAppointments = async () => {
     setLoadingAppointments(true);
-    console.log('Randevular getiriliyor...');
-    
     const { data, error } = await supabase
       .from('appointments')
-      .select(`
-        *,
-        patients (
-          first_name,
-          last_name,
-          phone
-        ),
-        doctors (
-          first_name,
-          last_name
-        )
-      `)
-      .order('date', { ascending: true });
-    
+      .select('*')
+      .order('date', { ascending: false });
+
     if (error) {
       console.error('Randevular getirilirken hata oluştu:', error);
     } else {
       console.log('Gelen randevu verileri:', data);
       console.log('Toplam randevu sayısı:', data.length);
     }
-    
+
     setAppointments(data || []);
     setLoadingAppointments(false);
   };
@@ -134,6 +172,17 @@ const Dashboard = () => {
   useEffect(() => {
     fetchAppointments();
   }, []);
+
+  // Son randevular için kesin sıralama (önce created_at, yoksa date+time)
+  const sortedAppointments = [...appointments].sort((a, b) => {
+    if (a.created_at && b.created_at) {
+      return new Date(b.created_at) - new Date(a.created_at);
+    }
+    const fixTime = t => t && t.length === 5 ? t + ':00' : (t || '00:00:00');
+    const dateA = new Date(`${a.date}T${fixTime(a.time)}`);
+    const dateB = new Date(`${b.date}T${fixTime(b.time)}`);
+    return dateB - dateA;
+  });
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -203,7 +252,7 @@ const Dashboard = () => {
           <div className="bg-background-light rounded-xl p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold text-primary-dark">Son Randevular</h2>
-              <button className="text-primary hover:text-primary-light flex items-center space-x-2">
+              <button className="text-primary hover:text-primary-light flex items-center space-x-2" onClick={() => navigate('/appointments')}>
                 <span>Tümünü Gör</span>
                 <FontAwesomeIcon icon={faArrowRight} className="w-4 h-4" />
               </button>
@@ -217,7 +266,7 @@ const Dashboard = () => {
               ) : appointments.length === 0 ? (
                 <p className="text-gray-500 text-center py-4">Henüz randevu bulunmuyor.</p>
               ) : (
-                appointments.slice(0, 3).map((appointment) => (
+                sortedAppointments.slice(0, 3).map((appointment) => (
                   <div key={appointment.id} className="bg-white rounded-lg p-4 hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-4">
@@ -226,7 +275,7 @@ const Dashboard = () => {
                         </div>
                         <div>
                           <h3 className="text-sm font-semibold text-primary-dark">
-                            {appointment.patients?.first_name} {appointment.patients?.last_name}
+                            {appointment.full_name}
                           </h3>
                           <div className="flex items-center space-x-2 text-sm text-gray-500 mt-1">
                             <FontAwesomeIcon icon={faClock} className="w-4 h-4" />
