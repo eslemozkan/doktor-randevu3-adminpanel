@@ -1,7 +1,12 @@
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from '@mui/material';
+import TestResultSummary from './TestResultSummary';
 
-const LabResultsPopup = ({ open, onClose, labResults }) => {
+const LabResultsPopup = ({ open, onClose, labResults, testImage }) => {
+  // Laboratuvar sonuçlarını metin olarak birleştir
+  const testText = labResults && labResults.length > 0
+    ? labResults.map(r => `${r.testName}: ${r.result} (Referans: ${r.referenceRange})`).join('\n')
+    : '';
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Laboratuvar Sonuçları</DialogTitle>
@@ -10,9 +15,7 @@ const LabResultsPopup = ({ open, onClose, labResults }) => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Test Adı</TableCell>
-                <TableCell>Sonuç</TableCell>
-                <TableCell>Referans Aralığı</TableCell>
+                {/* Başlıklar kaldırıldı */}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -26,6 +29,9 @@ const LabResultsPopup = ({ open, onClose, labResults }) => {
             </TableBody>
           </Table>
         </TableContainer>
+        <div style={{ marginTop: 32 }}>
+          <TestResultSummary isOpen={open} onClose={onClose} testImage={testImage} />
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Kapat</Button>

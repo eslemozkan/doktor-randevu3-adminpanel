@@ -295,15 +295,13 @@ const Dashboard = () => {
                           </>
                         )}
                         <span className={`px-3 py-1 rounded-full text-sm ${
-                          appointment.status === 'confirmed' ? 'bg-green-100 text-green-600' :
-                          appointment.status === 'pending' ? 'bg-yellow-100 text-yellow-600' :
-                          appointment.status === 'cancelled' ? 'bg-red-100 text-red-600' :
-                          'bg-blue-100 text-blue-600'
+                          ['confirmed', 'Onaylandı'].includes(appointment.status) ? 'bg-green-100 text-green-600' :
+                          ['cancelled', 'İptal Edildi'].includes(appointment.status) ? 'bg-red-100 text-red-600' :
+                          'bg-yellow-100 text-yellow-600'
                         }`}>
-                          {appointment.status === 'confirmed' ? 'Onaylandı' :
-                           appointment.status === 'pending' ? 'Beklemede' :
-                           appointment.status === 'cancelled' ? 'İptal Edildi' :
-                           'Tamamlandı'}
+                          {['confirmed', 'Onaylandı'].includes(appointment.status) ? 'Onaylandı' :
+                           ['cancelled', 'İptal Edildi'].includes(appointment.status) ? 'İptal Edildi' :
+                           'Beklemede'}
                         </span>
                       </div>
                     </div>

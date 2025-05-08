@@ -15,6 +15,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import LabResultsPopup from '../components/LabResultsPopup';
 import { supabase } from '../lib/supabase';
+import TestResultSummary from '../components/TestResultSummary';
 
 const Appointments = () => {
   const [appointments, setAppointments] = useState([]);
@@ -22,6 +23,8 @@ const Appointments = () => {
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isLabResultsOpen, setIsLabResultsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+  const [selectedTestImage, setSelectedTestImage] = useState(null);
 
   useEffect(() => {
     fetchAppointments();
@@ -97,7 +100,13 @@ const Appointments = () => {
 
   const handleViewLabResults = (appointment) => {
     setSelectedAppointment(appointment);
+    setSelectedTestImage(appointment.test_image);
     setIsLabResultsOpen(true);
+  };
+
+  const handleTestSummary = (testImage) => {
+    setSelectedTestImage(testImage);
+    setIsSummaryOpen(true);
   };
 
   const isPast = (date, time) => {
@@ -254,10 +263,9 @@ const Appointments = () => {
                     )}
                     <button
                       onClick={() => handleViewLabResults(appointment)}
-                      className="flex items-center space-x-2 text-primary hover:text-primary-light mt-2"
+                      className="text-primary hover:text-primary-light"
                     >
-                      <FontAwesomeIcon icon={faFlask} className="w-4 h-4" />
-                      <span>Tahlil Özetini Gör</span>
+                      Tahlil Özetini Gör
                     </button>
                   </div>
                   <div>
@@ -280,6 +288,7 @@ const Appointments = () => {
         open={isLabResultsOpen}
         onClose={() => setIsLabResultsOpen(false)}
         labResults={selectedAppointment?.labResults}
+        testImage={selectedAppointment?.medical_file_url || selectedAppointment?.test_image}
       />
     </div>
   );
